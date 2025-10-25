@@ -1,10 +1,50 @@
 import argparse
 import sys
 import json
+import re
+import ipaddress
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 from crawler import run_crawler, CrawlerConfig
 from notifier import test_discord_notification
 from utils import log
+
+def normalize_url(url: str) -> str:
+    """
+    Clean and smart URL normalizer.
+    - Fixes protocol typos (http//, htps://, etc.)
+    - Adds https:// if missing
+    - Uses http:// for IPs or localhost
+    - Removes fragments (#) and trailing slashes
+    """
+    if not url:
+        return ""
+
+    url = url.strip().replace(' ', '')
+    if not url:
+        return ""
+
+    # Fix common protocol typos
+    url = re.sub(r'^(ht+tps?|ttps?):/*', lambda m: 'https://' if 's' in m.group(0) else 'http://', url, flags=re.I)
+
+    parsed = urlparse(url)
+
+    # If no scheme → detect appropriate one
+    if not parsed.scheme:
+        host = url.split('/')[0]
+        try:
+            ipaddress.ip_address(host.split(':')[0])
+            scheme = "http"
+        except ValueError:
+            scheme = "http" if host.startswith("localhost") or host.endswith(".local") else "https"
+        url = f"{scheme}://{url}"
+        parsed = urlparse(url)
+
+    # Remove fragment + trailing slash
+    clean = parsed._replace(fragment="")
+    final = urlunparse(clean).rstrip("/")
+
+    return final
 
 def load_config_from_file(config_path: str) -> dict:
     """Loads configuration from a JSON file."""
@@ -85,16 +125,16 @@ def main():
     # --- Consolidate URLs ---
     urls = []
     if args.url:
-        urls.append(args.url)
+        urls.append(normalize_url(args.url))
     elif args.urls_file:
         try:
             with open(args.urls_file, 'r') as f:
-                urls.extend([line.strip() for line in f if line.strip()])
+                urls.extend([normalize_url(line.strip()) for line in f if line.strip()])
         except FileNotFoundError:
             log.error(f"The file specified by --urls-file was not found: {args.urls_file}")
             sys.exit(1)
     elif file_config.get('urls'):
-        urls.extend(file_config['urls'])
+        urls.extend([normalize_url(url) for url in file_config['urls']])
 
     if not urls:
         log.error("You must provide a target via --url, --urls-file, or a 'urls' key in your config file.")
