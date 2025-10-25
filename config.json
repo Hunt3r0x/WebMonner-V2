@@ -1,0 +1,39 @@
+{
+  "urls": [
+    "https://example.com",
+    "https://another-example.com"
+  ],
+  "extract_endpoints": true,
+  "analyze_similarity": true,
+  "filters": {
+    "include_domain": [],
+    "exclude_domain": [],
+    "include_url": [],
+    "exclude_url": [".*\\.map$"]
+  },
+  "endpoint_patterns": {
+    "path_patterns": [
+      "[\"\\'](/[\\w\\-/]+(?:/\\$[\\w{}.]+)*/?[\\w\\-/]*)[\"\\'']"
+    ],
+    "fetch_patterns": [
+      "fetch\\s*\\(\\s*[`\\'\"]((?:https?://[^/]+)?/[^\"'`]+)"
+    ],
+    "axios_patterns": [
+      "\\.(get|post|put|delete|patch)\\s*\\(\\s*[`'\"]([^\"'`]+)"
+    ],
+    "template_literal_paths": [
+      "`[^`]*?\\$\\{[^}]+\\}(/(?:api|v\\d+)/[^`\\s\"']+)`",
+      "`[^`]*?\\$\\{[^}]+\\}(/[^`]+?)`"
+    ],
+    "e_method_patterns": [
+      "e\\.(get|post|put|delete|patch|head)\\s*\\(\\s*`([^`]+?)`"
+    ],
+    "custom_patterns": []
+  },
+  "live_mode": false,
+  "interval": 300,
+  "headless": true,
+  "verbose": false,
+  "discord_webhook": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+}
+

@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+data/
+aaa.json
+test_*.py
+temp/
+tmp/
