@@ -12,3 +12,4 @@ aaa.json
 test_*.py
 temp/
 tmp/
+*.txt
