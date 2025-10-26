@@ -45,8 +45,11 @@ class EndpointExtractor:
 
     def _normalize_endpoint(self, endpoint: str) -> str:
         """Normalizes endpoints by replacing variables like ${id} with {var}."""
+        # Replace complex template literal expressions with ternary operators
+        # ${d ? '&cursor=' + d : ''} -> {var}
+        endpoint = re.sub(r'\$\{[^}]+\?[^}]+:[^}]+\}', '{var}', endpoint)
         # Replace template literal variables: ${x.cart_id} -> {var}
-        endpoint = re.sub(r'\$\{[\w.]+\}', '{var}', endpoint)
+        endpoint = re.sub(r'\$\{[^}]+\}', '{var}', endpoint)
         # Replace path parameters: :id -> {param}
         endpoint = re.sub(r':\w+', '{param}', endpoint)
         # Replace x.cart_id or similar inline variables with {var}
@@ -54,16 +57,121 @@ class EndpointExtractor:
         return endpoint
 
     def _is_clean_endpoint(self, endpoint: str) -> bool:
-        """Filters out common false positives like image paths or simple strings."""
+        """Filters out common false positives like image paths, regex patterns, or simple strings."""
         if not endpoint.startswith('/'):
             return False
-        if len(endpoint) < 3:
+        
+        # Minimum length: /v1, /me are valid (3 chars including leading /)
+        if len(endpoint) < 2:
             return False
-        if re.search(r'\.(js|css|html|png|jpg|jpeg|gif|svg|woff|ttf)$', endpoint, re.IGNORECASE):
+        
+        # Filter out HTML tags (e.g., /h5>, /p>, /div>)
+        if re.search(r'/[a-z0-9]+>', endpoint, re.IGNORECASE):
             return False
-        if ' ' in endpoint or '<' in endpoint or '>' in endpoint:
+        
+        # Filter out URLs (protocol-relative URLs like //domain.com)
+        if endpoint.startswith('//'):
             return False
+        
+        # Filter out JavaScript regex patterns like /pattern/flags or /pattern/);
+        # Common endings: /g, /gi, /gm, /i, /m, /), /,
+        # But allow trailing slash for routes like /api/
+        if re.search(r'/[gimsuvy,);]*$', endpoint) and not endpoint.endswith('/'):
+            return False
+        
+        # Filter out obvious regex patterns with backslash escapes
+        if '\\' in endpoint:
+            return False
+        
+        # Filter out patterns with regex brackets
+        if '[' in endpoint or ']' in endpoint:
+            return False
+        
+        # Filter out regex lookaheads and special groups (but not query params with ?)
+        if '?:' in endpoint or '?=' in endpoint or '?!' in endpoint:
+            return False
+        
+        # Filter out file extensions
+        if re.search(r'\.(js|css|html|png|jpg|jpeg|gif|svg|woff|ttf|pdf|heic)$', endpoint, re.IGNORECASE):
+            return False
+        
+        # Filter out paths with invalid/suspicious characters
+        # Allow: {var}, {param}, :param (route parameters), ?, &, =, -, _, ., /, trailing /
+        # Disallow: <, >, |, *, %, (, ), +, ;, ,, !, @, #, $
+        invalid_chars = [' ', '<', '>', '|', '*', '%', '(', ')', '+', ';', ',', '!', '@', '#', '$']
+        
+        # Check for invalid characters
+        if any(c in endpoint for c in invalid_chars):
+            return False
+        
+        # Allow colons for route parameters like :id, :userId
+        # Allow { and } for {var} and {param} placeholders
+        # Just ensure they're not malformed
+        
+        # Must contain meaningful content (letters, numbers, or common path chars)
+        # Allow single char paths like /v1, /v2, /me
+        if not re.search(r'[a-zA-Z0-9_-]', endpoint):
+            return False
+        
+        # Filter out suspicious single-char segments after slash
+        # Bad: /9, /-, /;  Good: /v1, /me, /api
+        if endpoint.count('/') == 1:  # Single segment path
+            path_content = endpoint[1:]  # Remove leading /
+            # If it's a single non-letter char, reject
+            if len(path_content) == 1:
+                if not path_content.isalpha():  # Must be a letter for single-char paths
+                    return False
+        
         return True
+
+    def _extract_template_path(self, endpoint: str) -> str:
+        """
+        Extracts the path from a template literal, handling nested expressions.
+        Handles complex cases like: ${ o }/api/v1/orders?x=${ n.value }&y=6${ d ? '&cursor=' + d : '' }
+        """
+        # Find where the actual path starts (first /)
+        path_start = endpoint.find('/')
+        if path_start == -1:
+            return endpoint
+        
+        # Extract from / to end, preserving ${...} blocks even if they contain quotes
+        result = []
+        i = path_start
+        in_template_expr = False
+        brace_depth = 0
+        
+        while i < len(endpoint):
+            char = endpoint[i]
+            
+            if char == '$' and i + 1 < len(endpoint) and endpoint[i + 1] == '{':
+                in_template_expr = True
+                result.append(char)
+                i += 1
+                result.append(endpoint[i])  # Add the '{'
+                brace_depth = 1
+            elif in_template_expr:
+                result.append(char)
+                if char == '{':
+                    brace_depth += 1
+                elif char == '}':
+                    brace_depth -= 1
+                    if brace_depth == 0:
+                        in_template_expr = False
+            elif char == '`':
+                # End of template literal
+                break
+            elif char in ('"', "'") and not in_template_expr:
+                # Quote outside of template expression - might be end of string
+                break
+            elif char in (' ', '\n', '\r', '\t'):
+                # Whitespace - likely end of path
+                break
+            else:
+                result.append(char)
+            
+            i += 1
+        
+        return ''.join(result)
 
     def _extract_with_regex(self, code: str) -> Set[str]:
         """Extracts endpoints using predefined regex patterns."""
@@ -76,14 +184,13 @@ class EndpointExtractor:
                     endpoint = match if isinstance(match, str) else match[-1]
                     
                     # For template literals, clean up the path
-                    if category in ["template_literal_paths", "e_method_patterns"]:
-                        # Extract just the path part (everything starting with /)
-                        path_match = re.search(r'(/[^`\s"\']*)', endpoint)
-                        if path_match:
-                            endpoint = path_match.group(1)
+                    if category in ["template_literal_paths", "e_method_patterns", "axios_patterns", "fetch_patterns"]:
+                        endpoint = self._extract_template_path(endpoint)
                     
-                    if self._is_clean_endpoint(endpoint):
-                        found.add(self._normalize_endpoint(endpoint))
+                    # Normalize first (replaces ${...} with {var}), then check if clean
+                    normalized = self._normalize_endpoint(endpoint)
+                    if self._is_clean_endpoint(normalized):
+                        found.add(normalized)
         return found
         
     def _extract_with_ast(self, code: str) -> Set[str]:
@@ -120,23 +227,37 @@ class EndpointExtractor:
             pass
         return found
         
-    def extract(self, file_path: Path, domain: str, filters: dict) -> List[str]:
+    def extract(self, file_path: Path, domain: str, filters: dict) -> Set[str]:
         """
-        Main extraction method. Reads a file and uses all techniques to find endpoints.
+        Main extraction method. Reads a file and extracts all endpoints.
+        Returns a set of endpoints found in this file (not compared yet).
         """
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 code = f.read()
         except FileNotFoundError:
             log.warning(f"File not found for endpoint extraction: {file_path}")
-            return []
+            return set()
         
         # Combine results from all methods
         regex_endpoints = self._extract_with_regex(code)
         ast_endpoints = self._extract_with_ast(code)
         all_endpoints = regex_endpoints.union(ast_endpoints)
-
-        # --- Load existing endpoints to find only new ones ---
+        
+        return all_endpoints
+    
+    def save_and_compare(self, domain: str, extracted_endpoints: Set[str]) -> List[str]:
+        """
+        Compares extracted endpoints with existing ones and saves new ones.
+        This should be called once per domain after all files are processed.
+        
+        Args:
+            domain: Domain name
+            extracted_endpoints: All endpoints extracted from all files in this scan
+            
+        Returns:
+            List of NEW endpoints (sorted)
+        """
         # Sanitize domain name for Windows (colons not allowed in directory names)
         safe_domain = domain.replace(':', '_')
         endpoints_dir = self.domain_data_path / safe_domain / "endpoints"
@@ -151,11 +272,12 @@ class EndpointExtractor:
                 except json.JSONDecodeError:
                     pass
         
-        new_endpoints = sorted(list(all_endpoints - existing_endpoints))
+        # Find truly NEW endpoints
+        new_endpoints = sorted(list(extracted_endpoints - existing_endpoints))
         
-        # --- Save updated list ---
-        if new_endpoints:
-            updated_list = sorted(list(all_endpoints.union(existing_endpoints)))
+        # Save the combined list (existing + newly extracted)
+        if extracted_endpoints:
+            updated_list = sorted(list(extracted_endpoints.union(existing_endpoints)))
             with open(all_endpoints_path, 'w') as f:
                 json.dump(updated_list, f, indent=4)
                 

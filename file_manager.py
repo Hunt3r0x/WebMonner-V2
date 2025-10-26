@@ -120,7 +120,14 @@ class FileManager:
             
             # Case 2: File is unchanged
             elif existing_entry['hash'] == new_hash:
-                return "UNCHANGED", {}
+                # Return minimal info with path for potential re-extraction
+                return "UNCHANGED", {
+                    "url": url,
+                    "size": existing_entry.get('size', 0),
+                    "lines": existing_entry.get('lines', 0),
+                    "beautified_path": Path(existing_entry.get('beautified_path', paths["beautified_path"])),
+                    "original_path": paths["original_path"]
+                }
                 
             # Case 3: File has been modified
             else:

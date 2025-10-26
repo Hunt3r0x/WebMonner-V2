@@ -19,6 +19,7 @@ class CrawlerConfig(NamedTuple):
     analyze_similarity: bool
     filters: Dict[str, List[str]]
     endpoint_patterns: Dict[str, List[str]] | None
+    force_reextract: bool
     live_mode: bool
     interval: int
     headless: bool
@@ -120,11 +121,16 @@ def run_crawler(config: CrawlerConfig):
                     
                     log.success(f"Discovered {len(discovered_js_files)} potential JS files.")
 
+                    # Track extracted endpoints per domain (before comparison)
+                    domain_endpoints = {}  # domain -> set of all extracted endpoints
+                    
                     # --- Process each discovered file ---
                     for js_url in discovered_js_files:
                         domain = urlparse(js_url).netloc
                         if domain not in all_scan_results:
                             all_scan_results[domain] = ScanResult(domain)
+                        if domain not in domain_endpoints:
+                            domain_endpoints[domain] = set()
 
                         current_result = all_scan_results[domain]
 
@@ -158,20 +164,28 @@ def run_crawler(config: CrawlerConfig):
                             # --- File Management & Diffing ---
                             status, file_info = file_manager.process_js_file(js_url, content, content_hash)
                             
+                            # Decide whether to process this file
+                            should_extract = False
                             if status == "UNCHANGED":
-                                if config.verbose:
-                                    log.muted(f"Unchanged: {js_url}")
-                                continue
-
-                            log.success(f"{status.capitalize()}: {js_url} ({format_filesize(file_info.get('size', 0))})")
-                            current_result.add_change(status, js_url, file_info)
+                                if config.force_reextract:
+                                    # Force re-extraction even on unchanged files
+                                    should_extract = True
+                                    if config.verbose:
+                                        log.muted(f"Unchanged (force re-extract): {js_url}")
+                                else:
+                                    if config.verbose:
+                                        log.muted(f"Unchanged: {js_url}")
+                            else:
+                                # File changed
+                                should_extract = True
+                                log.success(f"{status.capitalize()}: {js_url} ({format_filesize(file_info.get('size', 0))})")
+                                current_result.add_change(status, js_url, file_info)
 
                             # --- Endpoint Extraction ---
-                            if endpoint_extractor and (status in ["NEW", "MODIFIED"]):
-                                endpoints = endpoint_extractor.extract(file_info['beautified_path'], domain, config.filters)
-                                if endpoints:
-                                    log.info(f"  > Found {len(endpoints)} new endpoints.")
-                                    current_result.add_endpoints(endpoints)
+                            # Extract endpoints from this file (but don't compare/save yet)
+                            if endpoint_extractor and should_extract:
+                                file_endpoints = endpoint_extractor.extract(file_info['beautified_path'], domain, config.filters)
+                                domain_endpoints[domain].update(file_endpoints)
 
                             # --- Similarity Analysis ---
                             if similarity_analyzer and status == "NEW":
@@ -186,6 +200,15 @@ def run_crawler(config: CrawlerConfig):
                         except Exception as e:
                             log.error(f"Error processing {js_url}: {e}", exc_info=config.verbose)
                             current_result.errors.append(f"Processing error for {js_url}")
+                    
+                    # --- Compare and save endpoints per domain (once per domain) ---
+                    if endpoint_extractor:
+                        for domain, endpoints_set in domain_endpoints.items():
+                            if endpoints_set:
+                                new_endpoints = endpoint_extractor.save_and_compare(domain, endpoints_set)
+                                if new_endpoints:
+                                    log.info(f"Found {len(new_endpoints)} NEW unique endpoints for {domain}")
+                                    all_scan_results[domain].add_endpoints(new_endpoints)
 
                 browser.close()
 

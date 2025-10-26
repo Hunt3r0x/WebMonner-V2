@@ -79,6 +79,7 @@ def main():
     group_features.add_argument('--extract-endpoints', action=argparse.BooleanOptionalAction, help='Enable API endpoint extraction.')
     group_features.add_argument('--analyze-similarity', action=argparse.BooleanOptionalAction, help='Enable similarity analysis.')
     group_features.add_argument('--endpoint-regex', action='append', help='Add custom regex pattern for endpoint extraction. Can be used multiple times.')
+    group_features.add_argument('--force-reextract', action=argparse.BooleanOptionalAction, help='Always extract endpoints on every run, even from unchanged files.')
 
     # --- Filtering ---
     group_filter = parser.add_argument_group('Filtering Options')
@@ -171,6 +172,7 @@ def main():
             "exclude_url": (file_config.get('filters', {}).get('exclude_url', [])) + (args.exclude_url or []),
         },
         endpoint_patterns=final_patterns,
+        force_reextract=get_config_value(args.force_reextract, 'force_reextract', False),
         live_mode=get_config_value(args.live, 'live_mode', False),
         interval=get_config_value(args.interval, 'interval', 300),
         headless=get_config_value(args.headless, 'headless', True),

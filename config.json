@@ -16,17 +16,13 @@
       "[\"\\'](/[\\w\\-/]+(?:/\\$[\\w{}.]+)*/?[\\w\\-/]*)[\"\\'']"
     ],
     "fetch_patterns": [
-      "fetch\\s*\\(\\s*[`\\'\"]((?:https?://[^/]+)?/[^\"'`]+)"
+      "fetch\\s*\\(\\s*`([^`]+)`"
     ],
     "axios_patterns": [
-      "\\.(get|post|put|delete|patch)\\s*\\(\\s*[`'\"]([^\"'`]+)"
+      "\\.(get|post|put|delete|patch)\\s*\\(\\s*`([^`]+)`"
     ],
-    "template_literal_paths": [
-      "`[^`]*?\\$\\{[^}]+\\}(/(?:api|v\\d+)/[^`\\s\"']+)`",
-      "`[^`]*?\\$\\{[^}]+\\}(/[^`]+?)`"
-    ],
-    "e_method_patterns": [
-      "e\\.(get|post|put|delete|patch|head)\\s*\\(\\s*`([^`]+?)`"
+    "*_method_patterns": [
+      "\\b([a-zA-Z0-9_$]+)\\.(get|post|put|delete|patch|head)\\s*\\(\\s*`([^`]+)`"
     ],
     "custom_patterns": []
   },
@@ -36,4 +32,3 @@
   "verbose": false,
   "discord_webhook": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
 }
-
