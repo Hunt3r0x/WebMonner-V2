@@ -25,6 +25,7 @@ class CrawlerConfig(NamedTuple):
     headless: bool
     verbose: bool
     discord_webhook: str | None
+    display_endpoints: bool
 
 
 def should_process_js_file(url: str, filters: Dict[str, List[str]]) -> bool:
@@ -205,10 +206,18 @@ def run_crawler(config: CrawlerConfig):
                     if endpoint_extractor:
                         for domain, endpoints_set in domain_endpoints.items():
                             if endpoints_set:
-                                new_endpoints = endpoint_extractor.save_and_compare(domain, endpoints_set)
+                                new_endpoints, endpoints_file_path = endpoint_extractor.save_and_compare(domain, endpoints_set)
                                 if new_endpoints:
                                     log.info(f"Found {len(new_endpoints)} NEW unique endpoints for {domain}")
-                                    all_scan_results[domain].add_endpoints(new_endpoints)
+                                    all_scan_results[domain].add_endpoints(new_endpoints, endpoints_file_path)
+                                    
+                                    # Display endpoints on screen if enabled
+                                    if config.display_endpoints:
+                                        log.separator()
+                                        log.header(f"🎯 New Endpoints for {domain} ({len(new_endpoints)} total)")
+                                        for idx, endpoint in enumerate(new_endpoints, 1):
+                                            log.success(f"  {idx:3d}. {endpoint}")
+                                        log.separator()
 
                 browser.close()
 
