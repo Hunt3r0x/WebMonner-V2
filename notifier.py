@@ -10,14 +10,17 @@ class ScanResult:
         self.domain = domain
         self.changes: List[Dict[str, Any]] = []
         self.endpoints: List[str] = []
+        self.endpoints_file: str | None = None  # Path to the new endpoints file
         self.errors: List[str] = []
         self.counts = {"processed": 0, "filtered": 0}
 
     def add_change(self, status: str, url: str, file_info: Dict[str, Any]):
         self.changes.append({"status": status, "url": url, **file_info})
 
-    def add_endpoints(self, endpoints: List[str]):
+    def add_endpoints(self, endpoints: List[str], file_path: str | None = None):
         self.endpoints.extend(endpoints)
+        if file_path:
+            self.endpoints_file = file_path
 
 class Notifier:
     """Handles formatting and sending notifications to Discord."""
@@ -82,6 +85,12 @@ class Notifier:
                      field_value += f"`{endpoint}`\n"
                  if len(res.endpoints) > 5:
                     field_value += f"*...and {len(res.endpoints) - 5} more.*\n"
+                 
+                 # Add file path information
+                 if res.endpoints_file:
+                     import os
+                     filename = os.path.basename(res.endpoints_file)
+                     field_value += f"\n💾 Saved to: `{filename}`\n"
 
             embed["fields"].append({
                 "name": f"🌐 {res.domain}",
