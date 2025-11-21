@@ -5,6 +5,7 @@
   ],
   "extract_endpoints": true,
   "analyze_similarity": true,
+  "display_endpoints": true,
   "filters": {
     "include_domain": [],
     "exclude_domain": [],
