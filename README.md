@@ -93,6 +93,8 @@ python main.py --config config.json
 --endpoint-regex PATTERN   Add custom regex pattern for endpoint extraction (can be used multiple times)
 --analyze-similarity       Enable similarity analysis (rename detection)
 --no-analyze-similarity    Disable similarity analysis
+--display-endpoints        Display new endpoints on screen (enabled by default)
+--no-display-endpoints     Disable displaying endpoints on screen
 ```
 
 #### Filtering Options
@@ -136,6 +138,7 @@ Create a `config.json` file based on `config.json.example`:
   ],
   "extract_endpoints": true,
   "analyze_similarity": true,
+  "display_endpoints": true,
   "filters": {
     "include_domain": [],
     "exclude_domain": [],
@@ -283,6 +286,15 @@ python main.py \
   --endpoint-regex "endpoints\.[a-zA-Z]+\s*=\s*['\"]([^'\"]+)"
 ```
 
+### Extract endpoints without displaying them on screen
+
+```bash
+python main.py \
+  --url https://example.com \
+  --extract-endpoints \
+  --no-display-endpoints
+```
+
 ## Data Structure
 
 WebMonner stores all data in the `./data/` directory:
@@ -294,12 +306,39 @@ data/
 │   ├── beautified/        # Beautified versions for diff analysis
 │   ├── diffs/             # Diff files (if needed)
 │   ├── endpoints/         # Extracted endpoints
-│   │   └── all-endpoints.json
+│   │   ├── all-endpoints.json                  # All discovered endpoints (cumulative)
+│   │   ├── new-endpoints-2025-11-18_14-30-45.json  # NEW endpoints from a specific scan
+│   │   └── new-endpoints-2025-11-18_15-00-12.json  # NEW endpoints from another scan
 │   ├── fingerprints/      # Structural fingerprints for similarity analysis
 │   └── hashes.json        # File hashes and metadata
 └── another-site.com/
     └── ...
 ```
+
+### Understanding Endpoint Files
+
+- **`all-endpoints.json`**: Contains ALL endpoints ever discovered (cumulative)
+- **`new-endpoints-{timestamp}.json`**: Contains ONLY the new endpoints discovered in a specific scan
+  - Created automatically when new endpoints are found
+  - Timestamped for easy identification (format: `YYYY-MM-DD_HH-MM-SS`)
+  - Discord notifications include the filename for quick reference
+  - Perfect for quickly reviewing what changed after a deployment
+
+### Endpoint Display Options
+
+By default, new endpoints are displayed on the console during scanning:
+
+```
+===============================================================
+🎯 New Endpoints for example.com (3 total)
+===============================================================
+    1. /api/v2/users
+    2. /api/v2/products
+    3. /api/v2/orders
+===============================================================
+```
+
+You can disable this behavior with `--no-display-endpoints` or by setting `"display_endpoints": false` in your config file. Endpoints will still be saved to files and sent to Discord (if configured).
 
 ## How It Works
 
