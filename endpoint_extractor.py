@@ -246,7 +246,7 @@ class EndpointExtractor:
         
         return all_endpoints
     
-    def save_and_compare(self, domain: str, extracted_endpoints: Set[str]) -> List[str]:
+    def save_and_compare(self, domain: str, extracted_endpoints: Set[str]) -> tuple[List[str], str | None]:
         """
         Compares extracted endpoints with existing ones and saves new ones.
         This should be called once per domain after all files are processed.
@@ -256,7 +256,7 @@ class EndpointExtractor:
             extracted_endpoints: All endpoints extracted from all files in this scan
             
         Returns:
-            List of NEW endpoints (sorted)
+            Tuple of (List of NEW endpoints (sorted), path to new endpoints file if any new were found)
         """
         # Sanitize domain name for Windows (colons not allowed in directory names)
         safe_domain = domain.replace(':', '_')
@@ -275,10 +275,21 @@ class EndpointExtractor:
         # Find truly NEW endpoints
         new_endpoints = sorted(list(extracted_endpoints - existing_endpoints))
         
+        # Save NEW endpoints to a timestamped file
+        new_endpoints_file_path = None
+        if new_endpoints:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            new_endpoints_file = endpoints_dir / f"new-endpoints-{timestamp}.json"
+            with open(new_endpoints_file, 'w') as f:
+                json.dump(new_endpoints, f, indent=4)
+            new_endpoints_file_path = str(new_endpoints_file)
+            log.success(f"Saved {len(new_endpoints)} new endpoints to: {new_endpoints_file}")
+        
         # Save the combined list (existing + newly extracted)
         if extracted_endpoints:
             updated_list = sorted(list(extracted_endpoints.union(existing_endpoints)))
             with open(all_endpoints_path, 'w') as f:
                 json.dump(updated_list, f, indent=4)
                 
-        return new_endpoints
+        return new_endpoints, new_endpoints_file_path
