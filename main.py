@@ -80,6 +80,7 @@ def main():
     group_features.add_argument('--analyze-similarity', action=argparse.BooleanOptionalAction, help='Enable similarity analysis.')
     group_features.add_argument('--endpoint-regex', action='append', help='Add custom regex pattern for endpoint extraction. Can be used multiple times.')
     group_features.add_argument('--force-reextract', action=argparse.BooleanOptionalAction, help='Always extract endpoints on every run, even from unchanged files.')
+    group_features.add_argument('--display-endpoints', action=argparse.BooleanOptionalAction, help='Display new endpoints on screen (console output).')
 
     # --- Filtering ---
     group_filter = parser.add_argument_group('Filtering Options')
@@ -178,6 +179,7 @@ def main():
         headless=get_config_value(args.headless, 'headless', True),
         verbose=get_config_value(args.verbose, 'verbose', False),
         discord_webhook=None if args.no_notifications else discord_webhook,
+        display_endpoints=get_config_value(args.display_endpoints, 'display_endpoints', True),
     )
     
     # --- Final Validation ---
